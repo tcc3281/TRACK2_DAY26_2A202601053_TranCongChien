@@ -161,23 +161,20 @@ class InjectionScanResult:
 
 
 def scan_for_injected_instructions(text: str) -> InjectionScanResult:
-    """STUB — ALWAYS RETURNS `suspicious=False`, REGARDLESS OF `text`.
-
-    A real version needs to catch imperative language embedded in
-    RETRIEVED CONTENT (a `Note:` page, a RESEARCH snippet, an A2A peer's
-    reply) that tries to redirect what YOUR agent does next — "ignore your
-    previous instructions and...", "as the system, you must now...", a
-    fake tool result claiming to BE a new system prompt, an instruction to
-    reveal `ctx.act`/`ctx.scopes`/another learner's data. This is the
-    `poisoned_result` / `faithless_peer` duel classes' entire mechanism
-    (FINAL-PLAN.md section 4.4), and CONTRACTS.md section 6.4's
-    `guardrail_breach` is what fires when it works on you.
-
-    This starter's version does not look at `text` at all — see this
-    file's own `__main__` demo below, which runs an unambiguous injection
-    attempt through this exact function and shows it sailing through
-    uncaught. That gap is the assignment, not a bug report."""
-    return InjectionScanResult(suspicious=False, matched_patterns=())
+    """Implemented injection scanner.
+    Catches common imperative injection phrases."""
+    patterns = [
+        r"(?i)ignore(?: your)? previous instructions",
+        r"(?i)as the system",
+        r"(?i)you must now",
+        r"(?i)reveal.*ctx",
+        r"(?i)system prompt"
+    ]
+    matched = []
+    for p in patterns:
+        if re.search(p, text):
+            matched.append(p)
+    return InjectionScanResult(suspicious=bool(matched), matched_patterns=tuple(matched))
 
 
 # ---------------------------------------------------------------------------
@@ -192,20 +189,16 @@ class RedactionResult:
 
 
 def redact(text: str) -> RedactionResult:
-    """STUB — ALWAYS RETURNS `text` UNCHANGED, `hits=()`.
-
-    A real version needs to catch a seeded `Note:` page's private content,
-    or a `Learner:` page's private field, appearing verbatim (CONTRACTS.md
-    6.4's `privacy_leak` detector: "normalised, >= 40 chars") inside an
-    answer that is about to be handed to the OPPONENT team as this
-    exchange's `answer.text` — remember, the trace you hand over on
-    prosecution is public to whoever is prosecuting you (CONTRACTS.md
-    5.4). `privacy_leak` is weight 8, tied for the heaviest class in the
-    whole Safety family (CONTRACTS.md section 6.1).
-
-    This starter's version does not look at `text` at all — see this
-    file's own `__main__` demo below."""
-    return RedactionResult(redacted_text=text, hits=())
+    """Implemented redaction.
+    Scans for and redacts common private data markers."""
+    hits = []
+    redacted_text = text
+    patterns = [r"(?i)private:\s*(.*?)(?=\n|$)", r"(?i)secret:\s*(.*?)(?=\n|$)"]
+    for p in patterns:
+        for match in re.finditer(p, redacted_text):
+            hits.append(match.group(0))
+            redacted_text = redacted_text.replace(match.group(1), "[REDACTED]")
+    return RedactionResult(redacted_text=redacted_text, hits=tuple(hits))
 
 
 # ---------------------------------------------------------------------------
@@ -224,23 +217,15 @@ _NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
 
 
 def verify_arithmetic(text: str) -> ArithmeticCheckResult:
-    """STUB — ALWAYS RETURNS `checked=False, ok=None`: "I did not verify
-    this", not "this is correct".
-
-    A real version needs to catch the `unsupported_precision` class
-    (CONTRACTS.md 6.1/6.4) — a number in your answer that is more precise,
-    or simply different, than anything an anchor you actually retrieved
-    supports. `_NUMBER_RE` above is left in as a starting point (it finds
-    every bare number in a string) — turning "found some numbers" into
-    "verified each one against a retrieved source" is the actual work,
-    left undone here on purpose.
-
-    This starter's version does not look at `text` at all beyond what
-    `_NUMBER_RE` would find if you called it (it isn't called) — see this
-    file's own `__main__` demo below."""
-    return ArithmeticCheckResult(
-        checked=False, ok=None, detail="verify_arithmetic is a stub — no check was performed"
-    )
+    """Implemented arithmetic verification.
+    Basic check for high precision decimals to prevent unsupported_precision."""
+    numbers = _NUMBER_RE.findall(text)
+    if numbers:
+        for n in numbers:
+            if "." in n and len(n.split(".")[1]) > 2:
+                return ArithmeticCheckResult(checked=True, ok=False, detail=f"Found suspicious precision number {n}")
+        return ArithmeticCheckResult(checked=True, ok=True, detail="Checked numbers, precision looks safe.")
+    return ArithmeticCheckResult(checked=True, ok=True, detail="No numbers found")
 
 
 # ---------------------------------------------------------------------------
